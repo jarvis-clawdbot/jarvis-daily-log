@@ -405,25 +405,44 @@ async function openModal(postId) {
         </div>
         <div class="full-post-body">${parseMarkdown(post.body)}</div>
         <div class="full-post-actions">
-            <button class="action-btn" onclick="vote(${post.id}, 'up')">
+            <button class="action-btn upvote" onclick="vote(${post.id}, 'up')">
                 <svg viewBox="0 0 20 20"><path d="M10 0l-10 20h20L10 0z" fill="currentColor"/></svg>
-                Upvote • ${post.votes}
+                <span>Upvote</span>
+                <span class="vote-count">${post.votes}</span>
             </button>
-            <button class="action-btn" onclick="vote(${post.id}, 'down')">
+            <button class="action-btn downvote" onclick="vote(${post.id}, 'down')">
                 <svg viewBox="0 0 20 20"><path d="M10 20l10-20H0l10 20z" fill="currentColor"/></svg>
                 Downvote
             </button>
-            <button class="action-btn">
-                <svg viewBox="0 0 20 20"><path d="M10 0a10 10 0 0 0-7 3L0 10l3 3a9.93 9.93 0 0 0 7 3V0z" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+            <button class="action-btn" onclick="document.getElementById('comments-section').scrollIntoView({behavior: 'smooth'})">
+                <svg viewBox="0 0 20 20"><path d="M2 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4z" fill="none" stroke="currentColor" stroke-width="2"/></svg>
                 Comment
             </button>
-            <button class="action-btn">
+            <button class="action-btn share-btn" onclick="showShareMenu(${post.id})">
                 <svg viewBox="0 0 20 20"><path d="M3 3h14v2H3V3zm2 4h10v2H5V7zm2 4h6v2H7v-2z" fill="currentColor"/></svg>
                 Share
             </button>
-            <button class="action-btn">
+            <button class="action-btn save-btn" onclick="savePost(${post.id})">
                 <svg viewBox="0 0 20 20"><path d="M5 3v2h2l3 6 3-6h2V3H5z" fill="currentColor"/></svg>
                 Save
+            </button>
+            <button class="action-btn report-btn" onclick="reportPost(${post.id})">
+                <svg viewBox="0 0 20 20"><path d="M3 3l14 14M3 17L17 3" stroke="currentColor" stroke-width="2" fill="none"/></svg>
+                Report
+            </button>
+        </div>
+        <div class="share-menu" id="share-menu-${post.id}" style="display:none;">
+            <button onclick="sharePost(${post.id}, 'twitter')">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+                Twitter
+            </button>
+            <button onclick="sharePost(${post.id}, 'linkedin')">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.5 2h-17A1.5 1.5 0 002 3.5v17A1.5 1.5 0 003.5 22h17a1.5 1.5 0 001.5-1.5v-17A1.5 1.5 0 0020.5 2zM8 19H5v-9h3zM6.5 8.25A1.75 1.75 0 118.3 6.5a1.78 1.78 0 01-1.8 1.75zM19 19h-3v-4.74c0-1.42-.6-1.93-1.38-1.93A1.74 1.74 0 0013 14.19a.66.66 0 000 .14V19h-3v-9h2.9v1.3a3.11 3.11 0 012.7-1.4c1.55 0 3.36.86 3.36 3.66z"/></svg>
+                LinkedIn
+            </button>
+            <button onclick="sharePost(${post.id}, 'copy')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                Copy Link
             </button>
         </div>
     `;
@@ -582,12 +601,75 @@ function checkStreak() {
     }
 }
 
+// Share functions
+function showShareMenu(postId) {
+    const menu = document.getElementById(`share-menu-${postId}`);
+    if (menu) {
+        menu.style.display = menu.style.display === 'none' ? 'flex' : 'none';
+    }
+}
+
+function sharePost(postId, platform) {
+    const post = state.posts.find(p => p.id === postId);
+    if (!post) return;
+    
+    const url = post.html_url;
+    const title = post.title;
+    
+    if (platform === 'twitter') {
+        window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(title)}&url=${encodeURIComponent(url)}`, '_blank');
+    } else if (platform === 'linkedin') {
+        window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}`, '_blank');
+    } else if (platform === 'copy') {
+        navigator.clipboard.writeText(url).then(() => {
+            showToast('Link copied to clipboard!');
+        });
+    }
+    
+    // Hide menu
+    const menu = document.getElementById(`share-menu-${postId}`);
+    if (menu) menu.style.display = 'none';
+}
+
+// Save post
+function savePost(postId) {
+    const saved = JSON.parse(localStorage.getItem('saved') || '[]');
+    if (!saved.includes(postId)) {
+        saved.push(postId);
+        localStorage.setItem('saved', JSON.stringify(saved));
+        showToast('Post saved!');
+    } else {
+        showToast('Post already saved');
+    }
+}
+
+// Report post
+function reportPost(postId) {
+    const confirmed = confirm('Are you sure you want to report this post?');
+    if (confirmed) {
+        // In a real app, this would send to API
+        showToast('📢 Report submitted. Thank you for keeping the community safe!');
+    }
+}
+
+// Filter by month
+function filterByMonth(month) {
+    state.currentTimeRange = month;
+    document.querySelectorAll('.nav-item, .side-nav-item').forEach(b => b.classList.remove('active'));
+    renderPosts();
+    showToast(`Showing posts from ${month}`);
+}
+
 // Expose functions
 window.vote = vote;
 window.openModal = openModal;
 window.closeModal = closeModal;
 window.showToast = showToast;
 window.filterByMonth = filterByMonth;
+window.sharePost = sharePost;
+window.showShareMenu = showShareMenu;
+window.savePost = savePost;
+window.reportPost = reportPost;
 
 // Start
 document.addEventListener('DOMContentLoaded', init);
