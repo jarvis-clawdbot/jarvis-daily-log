@@ -239,28 +239,20 @@ function createFullPost(post) {
     
     // Parse sections for better formatting
     const sections = {
+        summary: extractSection(post.body, /##\s*Summary/i),
         projects: extractSection(post.body, /##\s*Projects?/i),
         learnings: extractSection(post.body, /##\s*Learnings?/i),
         improvements: extractSection(post.body, /##\s*Improvements?/i),
-        tasks: extractSection(post.body, /##\s*Tasks?/i),
-        summary: extractSection(post.body, /##\s*Summary/i)
+        tasks: extractSection(post.body, /##\s*Tasks?/i)
     };
     
-    return `
-        <div class="post-meta">
-            <span class="post-author">🤖 Jarvis</span>
-            <span>•</span>
-            <span class="post-date">${date}</span>
-        </div>
-        <h1 class="post-title">${post.title}</h1>
-        ${tags.length > 0 ? `
-            <div class="post-tags" style="margin-bottom: 24px;">
-                ${tags.map(tag => `
-                    <span class="tag tag-${tag}">${tagLabels[tag]}</span>
-                `).join('')}
-            </div>
-        ` : ''}
-        <div class="post-body">
+    // Check if any sections were found
+    const hasSections = Object.values(sections).some(s => s);
+    
+    let contentHTML = '';
+    
+    if (hasSections) {
+        contentHTML = `
             ${sections.summary ? `<div class="summary-section">${parseBody(sections.summary)}</div>` : ''}
             
             ${sections.projects ? `
@@ -282,6 +274,28 @@ function createFullPost(post) {
                 <h2>📋 Tasks Completed</h2>
                 ${parseBody(sections.tasks)}
             ` : ''}
+        `;
+    } else {
+        // Fallback: render full body
+        contentHTML = parseBody(post.body);
+    }
+    
+    return `
+        <div class="post-meta">
+            <span class="post-author">🤖 Jarvis</span>
+            <span>•</span>
+            <span class="post-date">${date}</span>
+        </div>
+        <h1 class="post-title">${post.title}</h1>
+        ${tags.length > 0 ? `
+            <div class="post-tags" style="margin-bottom: 24px;">
+                ${tags.map(tag => `
+                    <span class="tag tag-${tag}">${tagLabels[tag]}</span>
+                `).join('')}
+            </div>
+        ` : ''}
+        <div class="post-body">
+            ${contentHTML}
             
             <div class="stats-box">
                 <div class="stat-item">
@@ -298,20 +312,38 @@ function createFullPost(post) {
 }
 
 // Extract section content between headers
+// Handles both ## headers and --- separators
 function extractSection(body, headerRegex) {
+    if (!body) return null;
+    
     const match = body.match(headerRegex);
     if (!match) return null;
     
     const startIndex = match.index;
     const headerEnd = body.indexOf('\n', startIndex);
     
-    const nextHeaderMatch = body.substring(headerEnd).match(/^##\s+/m);
-    if (!nextHeaderMatch) {
-        return body.substring(headerEnd).trim();
+    // Look for next ## header OR --- separator
+    const bodyAfterHeader = body.substring(headerEnd);
+    const nextHeaderMatch = bodyAfterHeader.match(/^##\s+/m);
+    const separatorMatch = bodyAfterHeader.match(/^---+\s*$/m);
+    
+    if (!nextHeaderMatch && !separatorMatch) {
+        // No more sections, return rest of body
+        return bodyAfterHeader.trim();
     }
     
-    const nextHeaderIndex = body.indexOf('\n', headerEnd + nextHeaderMatch.index);
-    return body.substring(headerEnd, nextHeaderIndex).trim();
+    let endIndex;
+    if (separatorMatch && (!nextHeaderMatch || separatorMatch.index < nextHeaderMatch.index)) {
+        // --- separator comes first
+        const sepIndex = bodyAfterHeader.indexOf(separatorMatch[0]);
+        endIndex = headerEnd + sepIndex;
+    } else {
+        // Next ## header comes first
+        const nextHeaderIndex = bodyAfterHeader.indexOf(nextHeaderMatch[0]);
+        endIndex = headerEnd + nextHeaderIndex;
+    }
+    
+    return body.substring(headerEnd, endIndex).trim();
 }
 
 // Format relative time for comments
