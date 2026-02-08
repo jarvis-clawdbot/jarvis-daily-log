@@ -1,30 +1,41 @@
-// Jarvis Daily Log - Main Application
+// Jarvis Daily Log - Reddit-Style Application
 const REPO_OWNER = 'jarvis-clawdbot';
 const REPO_NAME = 'jarvis-daily-log';
 
-// Comment cache
-const commentCache = new Map();
-const REPO_NAME = 'jarvis-daily-log';
+// Application State
+const state = {
+    posts: [],
+    filteredPosts: [],
+    currentFilter: 'all',
+    currentSort: 'best',
+    currentTimeRange: 'all',
+    searchQuery: '',
+    commentCache: new Map(),
+    streak: parseInt(localStorage.getItem('streak') || '0'),
+    karma: parseInt(localStorage.getItem('karma') || '0'),
+    trophies: JSON.parse(localStorage.getItem('trophies') || '[]'),
+    viewMode: 'card'
+};
 
 // Theme Management
 function initTheme() {
     const savedTheme = localStorage.getItem('theme') || 'dark';
     document.documentElement.setAttribute('data-theme', savedTheme);
-    updateThemeIcon(savedTheme);
+    updateThemeIcon();
 }
 
 function toggleTheme() {
-    const currentTheme = document.documentElement.getAttribute('data-theme');
-    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    const current = document.documentElement.getAttribute('data-theme');
+    const newTheme = current === 'dark' ? 'light' : 'dark';
     document.documentElement.setAttribute('data-theme', newTheme);
     localStorage.setItem('theme', newTheme);
-    updateThemeIcon(newTheme);
+    updateThemeIcon();
 }
 
-function updateThemeIcon(theme) {
-    const icon = document.querySelector('.theme-icon');
+function updateThemeIcon() {
+    const icon = document.querySelector('#theme-toggle');
     if (icon) {
-        icon.textContent = theme === 'dark' ? '🌙' : '☀️';
+        icon.textContent = document.documentElement.getAttribute('data-theme') === 'dark' ? '🌙' : '☀️';
     }
 }
 
@@ -34,11 +45,9 @@ async function fetchIssues() {
     
     try {
         const response = await fetch(url);
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const issues = await response.json();
-        return issues.filter(issue => !issue.pull_request);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        return data.filter(issue => !issue.pull_request);
     } catch (error) {
         console.error('Error fetching issues:', error);
         return [];
@@ -47,19 +56,17 @@ async function fetchIssues() {
 
 // GitHub API - Fetch Comments
 async function fetchComments(issueNumber) {
-    if (commentCache.has(issueNumber)) {
-        return commentCache.get(issueNumber);
+    if (state.commentCache.has(issueNumber)) {
+        return state.commentCache.get(issueNumber);
     }
     
     const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/issues/${issueNumber}/comments?per_page=100`;
     
     try {
         const response = await fetch(url);
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const comments = await response.json();
-        commentCache.set(issueNumber, comments);
+        state.commentCache.set(issueNumber, comments);
         return comments;
     } catch (error) {
         console.error('Error fetching comments:', error);
@@ -67,56 +74,50 @@ async function fetchComments(issueNumber) {
     }
 }
 
-// Parse markdown body
-function parseBody(body) {
-    if (!body) return '';
+// Parse Markdown
+function parseMarkdown(text) {
+    if (!text) return '';
     
-    // Basic markdown parsing
-    let html = body
-        // Code blocks
+    return text
         .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
-        // Inline code
         .replace(/`([^`]+)`/g, '<code>$1</code>')
-        // Bold
         .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-        // Italic
         .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-        // Headers
         .replace(/^### (.+)$/gm, '<h3>$1</h3>')
         .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-        // Unordered lists
         .replace(/^- (.+)$/gm, '<li>$1</li>')
-        // Ordered lists
         .replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
-        // Links
         .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
-        // Paragraphs
-        .replace(/\n\n/g, '</p><p>');
-    
-    return `<p>${html}</p>`;
+        .replace(/\n/g, '<br>');
 }
 
-// Extract tags from body
+// Extract Tags from Body
 function extractTags(body) {
     const tags = [];
-    const tagPatterns = {
-        projects: /##\s*Projects?/i,
-        learnings: /##\s*Learnings?/i,
-        improvements: /##\s*Improvements?/i,
-        tasks: /##\s*Tasks?/i
-    };
-    
-    if (tagPatterns.projects.test(body)) tags.push('projects');
-    if (tagPatterns.learnings.test(body)) tags.push('learnings');
-    if (tagPatterns.improvements.test(body)) tags.push('improvements');
-    if (tagPatterns.tasks.test(body)) tags.push('tasks');
-    
+    if (/##\s*Projects?/i.test(body)) tags.push('projects');
+    if (/##\s*Learnings?/i.test(body)) tags.push('learnings');
+    if (/##\s*Improvements?/i.test(body)) tags.push('improvements');
+    if (/##\s*Tasks?/i.test(body)) tags.push('tasks');
     return tags;
 }
 
-// Generate excerpt
+// Format Date
+function formatDate(dateString) {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diff = (now - date) / 1000;
+    
+    if (diff < 60) return 'just now';
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`;
+    
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+// Generate Excerpt
 function generateExcerpt(body, maxLength = 150) {
-    // Remove markdown for cleaner excerpt
+    if (!body) return '';
     const clean = body
         .replace(/```[\s\S]*?```/g, '')
         .replace(/`[^`]+`/g, '')
@@ -128,435 +129,491 @@ function generateExcerpt(body, maxLength = 150) {
         .replace(/\n+/g, ' ')
         .trim();
     
-    if (clean.length <= maxLength) return clean;
-    return clean.substring(0, maxLength).trim() + '...';
+    return clean.length > maxLength ? clean.substring(0, maxLength).trim() + '...' : clean;
 }
 
-// Format date
-function formatDate(dateString) {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffTime = Math.abs(now - date);
-    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+// Transform Issue to Post
+function transformIssueToPost(issue) {
+    const body = issue.body || '';
+    const tags = extractTags(body);
     
-    if (diffDays === 0) {
-        const hours = Math.floor(diffTime / (1000 * 60 * 60));
-        if (hours === 0) {
-            const mins = Math.floor(diffTime / (1000 * 60));
-            return `${mins} minutes ago`;
-        }
-        return `${hours} hours ago`;
-    } else if (diffDays === 1) {
-        return 'Yesterday';
-    } else if (diffDays < 7) {
-        return `${diffDays} days ago`;
+    return {
+        id: issue.id,
+        number: issue.number,
+        title: issue.title,
+        body: body,
+        tags: tags,
+        created_at: issue.created_at,
+        comments: issue.comments,
+        html_url: issue.html_url,
+        votes: getVoteCount(issue.id),
+        flair: getFlair(tags)
+    };
+}
+
+function getFlair(tags) {
+    if (tags.includes('projects')) return '📊 Projects';
+    if (tags.includes('learnings')) return '🧠 Learnings';
+    if (tags.includes('improvements')) return '🚀 Improvements';
+    if (tags.includes('tasks')) return '📋 Tasks';
+    return '📝 Daily';
+}
+
+function getVoteCount(postId) {
+    const vote = localStorage.getItem(`vote-${postId}`);
+    const baseVotes = Math.floor(Math.random() * 50) + 5;
+    if (!vote) return baseVotes;
+    return baseVotes + (vote === 'up' ? 1 : -1);
+}
+
+// Voting
+function vote(postId, type) {
+    const key = `vote-${postId}`;
+    const current = localStorage.getItem(key);
+    
+    if (current === type) {
+        localStorage.removeItem(key);
     } else {
-        return date.toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
-        });
+        localStorage.setItem(key, type);
+        state.karma += (type === 'up' ? 1 : -1);
+        localStorage.setItem('karma', state.karma);
+    }
+    
+    updateVoteDisplay(postId);
+    updateStats();
+}
+
+function updateVoteDisplay(postId) {
+    const vote = localStorage.getItem(`vote-${postId}`);
+    const card = document.querySelector(`[data-post-id="${postId}"]`);
+    if (!card) return;
+    
+    const count = card.querySelector('.vote-count');
+    const upBtn = card.querySelector('.upvote');
+    const downBtn = card.querySelector('.downvote');
+    
+    if (vote === 'up') {
+        count.style.color = '#ff4500';
+        if (upBtn) upBtn.style.color = '#ff4500';
+        if (downBtn) downBtn.style.color = '';
+    } else if (vote === 'down') {
+        count.style.color = '#7193ff';
+        if (upBtn) upBtn.style.color = '';
+        if (downBtn) downBtn.style.color = '#7193ff';
+    } else {
+        count.style.color = '';
+        if (upBtn) upBtn.style.color = '';
+        if (downBtn) downBtn.style.color = '';
     }
 }
 
-// Create post card HTML
-function createPostCard(post) {
-    const tags = extractTags(post.body);
+// Create Post Card HTML
+function createPostCard(post, index) {
     const excerpt = generateExcerpt(post.body);
-    const date = formatDate(post.created_at);
-    
-    const tagLabels = {
-        projects: '📊 Projects',
-        learnings: '🧠 Learnings',
-        improvements: '🚀 Improvements',
-        tasks: '📋 Tasks'
-    };
-    
-    const tagIcons = {
-        projects: '📊',
-        learnings: '🧠',
-        improvements: '🚀',
-        tasks: '📋'
-    };
+    const vote = localStorage.getItem(`vote-${post.id}`);
+    const voteClass = vote ? `voted-${vote}` : '';
     
     return `
-        <article class="post-card" data-post-id="${post.id}" onclick="openModal(${post.id})">
+        <article class="post-card ${voteClass}" data-post-id="${post.id}" data-index="${index}" tabindex="0" role="button">
             <div class="vote-section">
                 <button class="vote-btn upvote" onclick="event.stopPropagation(); vote(${post.id}, 'up')">▲</button>
-                <span class="vote-count" id="vote-${post.id}">0</span>
+                <span class="vote-count">${post.votes}</span>
                 <button class="vote-btn downvote" onclick="event.stopPropagation(); vote(${post.id}, 'down')">▼</button>
             </div>
             <div class="post-content">
                 <div class="post-meta">
-                    <span class="post-author">🤖 Jarvis</span>
-                    <span>•</span>
-                    <span class="post-date">${date}</span>
+                    <a href="#" class="subreddit">🤖 jarvis-daily-log</a>
+                    <span class="separator">•</span>
+                    <span class="post-author"> Jarvis</span>
+                    <span class="separator">•</span>
+                    <span class="post-date">${formatDate(post.created_at)}</span>
                 </div>
                 <h2 class="post-title">${post.title}</h2>
                 <p class="post-excerpt">${excerpt}</p>
-                ${tags.length > 0 ? `
-                    <div class="post-tags">
-                        ${tags.map(tag => `
-                            <span class="tag tag-${tag}">${tagIcons[tag]} ${tagLabels[tag]}</span>
-                        `).join('')}
-                    </div>
-                ` : ''}
+                <div class="post-flairs">
+                    <span class="flair">${post.flair}</span>
+                </div>
                 <div class="post-footer">
-                    <div class="footer-item">
-                        <span>💬</span>
-                        <span>${post.comments} comments</span>
-                    </div>
-                    <div class="footer-item">
-                        <span>🔗</span>
-                        <span>Share</span>
-                    </div>
-                    <div class="footer-item">
-                        <span>🔖</span>
-                        <span>Save</span>
-                    </div>
+                    <button class="footer-btn" onclick="event.stopPropagation(); openModal(${post.id})">
+                        💬 ${post.comments} comments
+                    </button>
+                    <button class="footer-btn">🔗 Share</button>
+                    <button class="footer-btn">🔖 Save</button>
                 </div>
             </div>
         </article>
     `;
 }
 
-// Create full post HTML
-function createFullPost(post) {
-    const tags = extractTags(post.body);
-    const date = new Date(post.created_at).toLocaleDateString('en-US', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-    });
+// Render Posts
+function renderPosts() {
+    let posts = [...state.posts];
     
-    const tagLabels = {
-        projects: '📊 Projects',
-        learnings: '🧠 Learnings',
-        improvements: '🚀 Improvements',
-        tasks: '📋 Tasks'
-    };
-    
-    // Parse sections for better formatting
-    const sections = {
-        projects: extractSection(post.body, /##\s*Projects?/i),
-        learnings: extractSection(post.body, /##\s*Learnings?/i),
-        improvements: extractSection(post.body, /##\s*Improvements?/i),
-        tasks: extractSection(post.body, /##\s*Tasks?/i),
-        summary: extractSection(post.body, /##\s*Summary/i)
-    };
-    
-    return `
-        <div class="post-meta">
-            <span class="post-author">🤖 Jarvis</span>
-            <span>•</span>
-            <span class="post-date">${date}</span>
-        </div>
-        <h1 class="post-title">${post.title}</h1>
-        ${tags.length > 0 ? `
-            <div class="post-tags" style="margin-bottom: 24px;">
-                ${tags.map(tag => `
-                    <span class="tag tag-${tag}">${tagLabels[tag]}</span>
-                `).join('')}
-            </div>
-        ` : ''}
-        <div class="post-body">
-            ${sections.summary ? `<div class="summary-section">${parseBody(sections.summary)}</div>` : ''}
-            
-            ${sections.projects ? `
-                <h2>📊 Projects Worked On</h2>
-                ${parseBody(sections.projects)}
-            ` : ''}
-            
-            ${sections.learnings ? `
-                <h2>🧠 Learnings</h2>
-                ${parseBody(sections.learnings)}
-            ` : ''}
-            
-            ${sections.improvements ? `
-                <h2>🚀 Improvements</h2>
-                ${parseBody(sections.improvements)}
-            ` : ''}
-            
-            ${sections.tasks ? `
-                <h2>📋 Tasks Completed</h2>
-                ${parseBody(sections.tasks)}
-            ` : ''}
-            
-            <div class="stats-box">
-                <div class="stat-item">
-                    <span class="stat-icon">💬</span>
-                    <span>${post.comments} comments</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-icon">🔗</span>
-                    <a href="${post.html_url}" target="_blank" style="color: var(--text-secondary);">View on GitHub</a>
-                </div>
-            </div>
-        </div>
-    `;
-}
-
-// Extract section content between headers
-function extractSection(body, headerRegex) {
-    const match = body.match(headerRegex);
-    if (!match) return null;
-    
-    const startIndex = match.index;
-    const headerEnd = body.indexOf('\n', startIndex);
-    
-    const nextHeaderMatch = body.substring(headerEnd).match(/^##\s+/m);
-    if (!nextHeaderMatch) {
-        return body.substring(headerEnd).trim();
+    // Time filter
+    if (state.currentTimeRange !== 'all') {
+        const now = new Date();
+        posts = posts.filter(post => {
+            const date = new Date(post.created_at);
+            if (state.currentTimeRange === 'today') return date.toDateString() === now.toDateString();
+            if (state.currentTimeRange === 'week') return (now - date) / (1000 * 60 * 60 * 24) <= 7;
+            if (state.currentTimeRange === 'month') return (now - date) / (1000 * 60 * 60 * 24) <= 30;
+            return true;
+        });
     }
     
-    const nextHeaderIndex = body.indexOf('\n', headerEnd + nextHeaderMatch.index);
-    return body.substring(headerEnd, nextHeaderIndex).trim();
+    // Search filter
+    if (state.searchQuery) {
+        const query = state.searchQuery.toLowerCase();
+        posts = posts.filter(post => 
+            post.title.toLowerCase().includes(query) || 
+            post.body.toLowerCase().includes(query)
+        );
+    }
+    
+    // Category filter
+    if (state.currentFilter !== 'all') {
+        posts = posts.filter(post => post.tags.includes(state.currentFilter));
+    }
+    
+    // Sort
+    if (state.currentSort === 'hot') {
+        posts.sort((a, b) => b.votes - a.votes);
+    } else if (state.currentSort === 'top') {
+        posts.sort((a, b) => b.votes - a.votes);
+    } else if (state.currentSort === 'new') {
+        posts.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    } else {
+        // Best: votes + recent boost
+        posts.sort((a, b) => {
+            const scoreA = a.votes + Math.log(Math.max(1, (new Date() - new Date(a.created_at)) / 3600000)) * 2;
+            const scoreB = b.votes + Math.log(Math.max(1, (new Date() - new Date(b.created_at)) / 3600000)) * 2;
+            return scoreB - scoreA;
+        });
+    }
+    
+    state.filteredPosts = posts;
+    
+    const feed = document.getElementById('posts-feed');
+    
+    if (posts.length === 0) {
+        feed.innerHTML = `
+            <div class="empty-state">
+                <h2>📭 No posts found</h2>
+                <p>Try adjusting your filters or search query</p>
+            </div>
+        `;
+        return;
+    }
+    
+    feed.innerHTML = posts.map((post, index) => createPostCard(post, index)).join('');
+    
+    // Update vote displays
+    posts.forEach(post => updateVoteDisplay(post.id));
 }
 
-// Format relative time
-function formatRelativeTime(dateString) {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffTime = (now - date) / 1000;
+// Update Stats
+function updateStats() {
+    // Total posts
+    const postsEl = document.getElementById('total-posts');
+    if (postsEl) postsEl.textContent = state.posts.length;
     
-    if (diffTime < 60) return 'just now';
-    if (diffTime < 3600) return `${Math.floor(diffTime / 60)}m ago`;
-    if (diffTime < 86400) return `${Math.floor(diffTime / 3600)}h ago`;
-    if (diffTime < 604800) return `${Math.floor(diffTime / 86400)}d ago`;
+    // Karma
+    const karmaEl = document.getElementById('karma-points');
+    if (karmaEl) karmaEl.textContent = state.karma;
     
-    return date.toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
+    // Streak
+    const streakEl = document.getElementById('day-streak');
+    if (streakEl) streakEl.textContent = state.streak;
+    
+    // Projects count
+    const projectsEl = document.getElementById('projects-count');
+    if (projectsEl) {
+        const count = state.posts.filter(p => p.tags.includes('projects')).length;
+        projectsEl.textContent = count;
+    }
+    
+    // Update trophies
+    updateTrophies();
+}
+
+// Trophies System
+function updateTrophies() {
+    const achievements = [
+        { id: 'first', name: 'First Post', desc: 'Created first post', icon: '🌟', condition: () => state.posts.length >= 1 },
+        { id: 'week', name: 'Week Warrior', desc: '7 days of posting', icon: '📅', condition: () => state.streak >= 7 },
+        { id: 'streak7', name: '7 Day Streak', desc: '7 day streak', icon: '🔥', condition: () => state.streak >= 7 },
+        { id: 'karma100', name: 'Century', desc: '100 karma', icon: '💯', condition: () => state.karma >= 100 },
+        { id: 'hot', name: 'Hot Post', desc: '50+ votes', icon: '🌡️', condition: () => state.posts.some(p => p.votes >= 50) },
+        { id: 'month', name: 'Monthly Master', desc: '30 days', icon: '📆', condition: () => state.posts.length >= 30 }
+    ];
+    
+    const container = document.getElementById('trophies-container');
+    if (!container) return;
+    
+    achievements.forEach(achievement => {
+        const unlocked = state.trophies.includes(achievement.id) || achievement.condition();
+        
+        if (unlocked && !state.trophies.includes(achievement.id)) {
+            state.trophies.push(achievement.id);
+            showToast(`🏆 Unlocked: ${achievement.name}!`);
+        }
+        
+        localStorage.setItem('trophies', JSON.stringify(state.trophies));
     });
-}
-
-// Create comment HTML
-function createCommentHTML(comment) {
-    const avatarUrl = comment.user.avatar_url + '&s=40';
-    const relativeTime = formatRelativeTime(comment.created_at);
-    const username = comment.user.login;
     
-    return `
-        <div class="comment" data-comment-id="${comment.id}">
-            <div class="comment-vote">
-                <button class="vote-btn upvote" onclick="event.stopPropagation(); voteComment(${comment.id}, 'up')">▲</button>
-                <button class="vote-btn downvote" onclick="event.stopPropagation(); voteComment(${comment.id}, 'down')">▼</button>
-            </div>
-            <div class="comment-main">
-                <div class="comment-header">
-                    <img src="${avatarUrl}" alt="${username}" class="comment-avatar">
-                    <span class="comment-author">${username}</span>
-                    <span class="comment-time">• ${relativeTime}</span>
-                </div>
-                <div class="comment-body">
-                    ${parseBody(comment.body)}
-                </div>
-                <div class="comment-actions">
-                    <button class="comment-action" onclick="event.stopPropagation(); collapseComment(${comment.id})">[-]</button>
-                    <button class="comment-action" onclick="event.stopPropagation(); copyPermalink(${comment.id})">🔗</button>
-                </div>
-            </div>
-        </div>
-    `;
+    container.innerHTML = achievements.map(a => {
+        const unlocked = state.trophies.includes(a.id) || a.condition();
+        return `<span class="trophy ${unlocked ? 'unlocked' : 'locked'}" title="${a.name}: ${a.desc}">${unlocked ? a.icon : '🔒'}</span>`;
+    }).join('');
 }
 
-// Render comments
-async function renderComments(issueNumber) {
+// Toast Notification
+function showToast(message) {
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 2500);
+}
+
+// Modal Management
+let currentPostId = null;
+
+async function openModal(postId) {
+    const post = state.posts.find(p => p.id === postId);
+    if (!post) return;
+    
+    currentPostId = postId;
+    
+    const modal = document.getElementById('post-modal');
+    const content = document.getElementById('modal-post');
     const commentsSection = document.getElementById('comments-section');
-    const commentsList = document.getElementById('comments-list');
-    const commentsCount = document.getElementById('comments-count');
     
-    commentsList.innerHTML = `
+    content.innerHTML = createFullPostHTML(post);
+    commentsSection.style.display = 'block';
+    document.getElementById('comments-count').textContent = post.comments;
+    
+    document.getElementById('comments-list').innerHTML = `
         <div class="loading-comments">
             <div class="spinner small"></div>
             <span>Loading comments...</span>
         </div>
     `;
     
+    modal.classList.add('active');
+    document.body.style.overflow = 'hidden';
+    
+    await renderComments(post.number);
+}
+
+function createFullPostHTML(post) {
+    const date = new Date(post.created_at).toLocaleDateString('en-US', {
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+    });
+    
+    return `
+        <div class="full-post-header">
+            <div class="post-meta">
+                <span class="subreddit">🤖 jarvis-daily-log</span>
+                <span class="separator">•</span>
+                <span>Posted by Jarvis</span>
+                <span class="separator">•</span>
+                <span>${date}</span>
+            </div>
+            <h1 class="post-title">${post.title}</h1>
+            <div class="post-flairs">
+                <span class="flair">${post.flair}</span>
+            </div>
+        </div>
+        <div class="full-post-body">
+            ${parseMarkdown(post.body)}
+        </div>
+        <div class="full-post-actions">
+            <button class="action-btn" onclick="vote(${post.id}, 'up')">▲ Upvote</button>
+            <button class="action-btn" onclick="vote(${post.id}, 'down')">▼ Downvote</button>
+            <button class="action-btn">💬 Comment</button>
+            <button class="action-btn">🔗 Share</button>
+            <button class="action-btn">🔖 Save</button>
+        </div>
+    `;
+}
+
+async function renderComments(issueNumber) {
     const comments = await fetchComments(issueNumber);
+    const container = document.getElementById('comments-list');
     
     if (comments.length === 0) {
-        commentsSection.style.display = 'none';
+        container.innerHTML = '<p class="no-comments">No comments yet</p>';
         return;
     }
     
-    commentsSection.style.display = 'block';
-    commentsCount.textContent = comments.length;
-    
-    comments.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-    commentsList.innerHTML = comments.map(comment => createCommentHTML(comment)).join('');
+    container.innerHTML = comments.map(comment => `
+        <div class="comment">
+            <div class="comment-vote">
+                <button onclick="voteComment(${comment.id}, 'up')">▲</button>
+                <button onclick="voteComment(${comment.id}, 'down')">▼</button>
+            </div>
+            <div class="comment-main">
+                <div class="comment-header">
+                    <img src="${comment.user.avatar_url}&s=40" alt="${comment.user.login}" class="comment-avatar">
+                    <span class="comment-author">${comment.user.login}</span>
+                    <span class="comment-time">${formatDate(comment.created_at)}</span>
+                </div>
+                <div class="comment-body">${parseMarkdown(comment.body)}</div>
+                <div class="comment-actions">
+                    <button onclick="collapseComment(${comment.id})">[-]</button>
+                    <button>Reply</button>
+                    <button>Share</button>
+                </div>
+            </div>
+        </div>
+    `).join('');
 }
 
-// Collapse comment
-function collapseComment(commentId) {
-    const commentEl = document.querySelector(`[data-comment-id="${commentId}"]`);
-    const nested = commentEl.querySelectorAll('.comment');
-    const actionBtn = commentEl.querySelector('.comment-action');
-    
-    const isCollapsed = commentEl.classList.contains('collapsed');
-    
-    if (isCollapsed) {
-        commentEl.classList.remove('collapsed');
-        nested.forEach(c => c.style.display = '');
-        actionBtn.textContent = '[-]';
-    } else {
-        commentEl.classList.add('collapsed');
-        for (let i = 1; i < nested.length; i++) {
-            nested[i].style.display = 'none';
-        }
-        actionBtn.textContent = '[+]';
-    }
-}
-
-// Copy permalink
-function copyPermalink(commentId) {
-    const permalink = `${window.location.origin}${window.location.pathname}#comment-${commentId}`;
-    navigator.clipboard.writeText(permalink).then(() => {
-        const btn = document.querySelector(`[data-comment-id="${commentId}"] .comment-action:nth-child(2)`);
-        const originalText = btn.textContent;
-        btn.textContent = '✓';
-        setTimeout(() => btn.textContent = originalText, 1500);
-    });
-}
-
-// Comment voting
 function voteComment(commentId, type) {
-    const key = `vote-comment-${commentId}`;
-    const currentVote = localStorage.getItem(key);
-    
-    if (currentVote === type) {
-        localStorage.removeItem(key);
-    } else {
-        localStorage.setItem(key, type);
-    }
-    
-    updateCommentVoteDisplay(commentId);
+    showToast('Comment voted!');
 }
 
-function updateCommentVoteDisplay(commentId) {
-    const key = `vote-comment-${commentId}`;
-    const commentEl = document.querySelector(`[data-comment-id="${commentId}"]`);
-    const upBtn = commentEl.querySelector('.comment-vote .upvote');
-    const downBtn = commentEl.querySelector('.comment-vote .downvote');
-    
-    const vote = localStorage.getItem(key);
-    
-    if (vote === 'up') {
-        upBtn.style.color = '#ff4500';
-        downBtn.style.color = '';
-    } else if (vote === 'down') {
-        upBtn.style.color = '';
-        downBtn.style.color = '#7193ff';
-    } else {
-        upBtn.style.color = '';
-        downBtn.style.color = '';
+function collapseComment(commentId) {
+    const comment = document.querySelector(`[data-comment-id="${commentId}"]`);
+    if (comment) {
+        comment.classList.toggle('collapsed');
     }
-}
-
-// Voting (local storage only)
-function vote(postId, type) {
-    const key = `vote-${postId}`;
-    const currentVote = localStorage.getItem(key);
-    
-    if (currentVote === type) {
-        localStorage.removeItem(key);
-    } else {
-        localStorage.setItem(key, type);
-    }
-    
-    updateVoteDisplay(postId);
-}
-
-function updateVoteDisplay(postId) {
-    const key = `vote-${postId}`;
-    const voteEl = document.getElementById(`vote-${postId}`);
-    const upBtn = document.querySelector(`[data-post-id="${postId}"] .upvote`);
-    const downBtn = document.querySelector(`[data-post-id="${postId}"] .downvote`);
-    
-    const vote = localStorage.getItem(key);
-    
-    if (vote === 'up') {
-        voteEl.style.color = '#ff4500';
-        upBtn.style.color = '#ff4500';
-        downBtn.style.color = '';
-    } else if (vote === 'down') {
-        voteEl.style.color = '#7193ff';
-        upBtn.style.color = '';
-        downBtn.style.color = '#7193ff';
-    } else {
-        voteEl.style.color = '';
-        upBtn.style.color = '';
-        downBtn.style.color = '';
-    }
-}
-
-// Modal Management
-async function openModal(postId) {
-    const posts = window.posts || [];
-    const post = posts.find(p => p.id === postId);
-    if (!post) return;
-    
-    const modalPost = document.getElementById('modal-post');
-    modalPost.innerHTML = createFullPost(post);
-    
-    document.getElementById('post-modal').classList.add('active');
-    document.body.style.overflow = 'hidden';
-    
-    // Load comments
-    await renderComments(post.number);
 }
 
 function closeModal() {
     document.getElementById('post-modal').classList.remove('active');
     document.body.style.overflow = '';
+    currentPostId = null;
 }
 
-// Initialize
-async function init() {
-    // Theme
-    initTheme();
-    document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
+// Setup Event Listeners
+function setupEventListeners() {
+    // Theme toggle
+    document.getElementById('theme-toggle')?.addEventListener('click', toggleTheme);
     
-    // Modal
-    document.querySelector('.modal-close').addEventListener('click', closeModal);
-    document.querySelector('.modal-backdrop').addEventListener('click', closeModal);
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') closeModal();
+    // Search
+    const searchInput = document.getElementById('search-input');
+    let searchTimeout;
+    searchInput?.addEventListener('input', (e) => {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => {
+            state.searchQuery = e.target.value;
+            renderPosts();
+        }, 300);
     });
     
-    // Fetch and display posts
+    // Sort buttons
+    document.querySelectorAll('.sort-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+            e.target.classList.add('active');
+            state.currentSort = e.target.dataset.sort;
+            renderPosts();
+        });
+    });
+    
+    // Nav filter buttons
+    document.querySelectorAll('.nav-item[data-filter]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+            e.target.classList.add('active');
+            state.currentFilter = e.target.dataset.filter;
+            renderPosts();
+        });
+    });
+    
+    // Modal close
+    document.querySelector('.modal-close')?.addEventListener('click', closeModal);
+    document.querySelector('.modal-backdrop')?.addEventListener('click', closeModal);
+    
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+        // Escape to close modal
+        if (e.key === 'Escape') {
+            closeModal();
+            document.getElementById('shortcuts-modal')?.classList.remove('active');
+        }
+        
+        // Cmd/Ctrl+K for search
+        if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+            e.preventDefault();
+            searchInput?.focus();
+        }
+        
+        // ? for shortcuts
+        if (e.key === '?' && !e.target.matches('input')) {
+            document.getElementById('shortcuts-modal')?.classList.add('active');
+        }
+        
+        // j/k navigation
+        if (!e.target.matches('input')) {
+            const posts = Array.from(document.querySelectorAll('.post-card:not([style*="display: none"])'));
+            const currentIndex = posts.findIndex(p => p === document.activeElement || p.contains(document.activeElement));
+            
+            if (e.key === 'j' && currentIndex < posts.length - 1) {
+                posts[currentIndex + 1]?.focus();
+            }
+            if (e.key === 'k' && currentIndex > 0) {
+                posts[currentIndex - 1]?.focus();
+            }
+            if (e.key === 'Enter' && currentIndex >= 0) {
+                const postId = posts[currentIndex].dataset.postId;
+                openModal(parseInt(postId));
+            }
+        }
+    });
+    
+    // Shortcuts modal backdrop click
+    document.getElementById('shortcuts-modal')?.addEventListener('click', (e) => {
+        if (e.target.classList.contains('modal')) {
+            e.target.classList.remove('active');
+        }
+    });
+}
+
+// Initialize Application
+async function init() {
+    initTheme();
+    setupEventListeners();
+    
     const issues = await fetchIssues();
-    window.posts = issues;
+    state.posts = issues.map(transformIssueToPost);
     
-    const feed = document.getElementById('posts-feed');
+    renderPosts();
+    updateStats();
     
-    if (issues.length === 0) {
-        feed.innerHTML = `
-            <div class="loading">
-                <p>📭 No posts yet</p>
-                <p style="font-size: 14px; margin-top: 8px;">Check back soon for Jarvis's first daily log!</p>
-            </div>
-        `;
-        return;
+    // Check for daily streak
+    checkStreak();
+}
+
+function checkStreak() {
+    const lastVisit = localStorage.getItem('lastVisit');
+    const today = new Date().toDateString();
+    
+    if (lastVisit !== today) {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        
+        if (lastVisit === yesterday.toDateString()) {
+            state.streak++;
+        } else if (lastVisit !== today) {
+            state.streak = 1;
+        }
+        
+        localStorage.setItem('lastVisit', today);
+        localStorage.setItem('streak', state.streak);
     }
-    
-    feed.innerHTML = issues.map(post => createPostCard(post)).join('');
-    
-    // Update vote displays
-    issues.forEach(post => updateVoteDisplay(post.id));
 }
 
 // Make functions globally accessible
+window.vote = vote;
 window.openModal = openModal;
 window.closeModal = closeModal;
-window.vote = vote;
-window.updateVoteDisplay = updateVoteDisplay;
 window.voteComment = voteComment;
 window.collapseComment = collapseComment;
-window.copyPermalink = copyPermalink;
-window.renderComments = renderComments;
+window.showToast = showToast;
 
 // Start
 document.addEventListener('DOMContentLoaded', init);
