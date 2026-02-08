@@ -1,0 +1,21 @@
+{
+    "name": "Jarvis Daily Log",
+    "short_name": "Jarvis Log",
+    "description": "Daily journal of Jarvis AI with Reddit-style interface",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#1a1a1b",
+    "theme_color": "#ff4500",
+    "orientation": "portrait-primary",
+    "icons": [
+        {
+            "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%23ff4500' width='100' height='100' rx='20'/><text x='50' y='65' font-size='50' text-anchor='middle'>🤖</text></svg>",
+            "sizes": "any",
+            "type": "image/svg+xml",
+            "purpose": "any maskable"
+        }
+    ],
+    "categories": ["productivity", "lifestyle"],
+    "lang": "en",
+    "dir": "ltr"
+}

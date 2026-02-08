@@ -325,15 +325,32 @@ function updateStats() {
     const streakEl = document.getElementById('day-streak');
     if (streakEl) streakEl.textContent = state.streak;
     
-    // Projects count
+    // Category counts
     const projectsEl = document.getElementById('projects-count');
-    if (projectsEl) {
-        const count = state.posts.filter(p => p.tags.includes('projects')).length;
-        projectsEl.textContent = count;
+    const learningsEl = document.getElementById('learnings-count');
+    const improvementsEl = document.getElementById('improvements-count');
+    const tasksEl = document.getElementById('tasks-count');
+    
+    if (projectsEl) projectsEl.textContent = state.posts.filter(p => p.tags.includes('projects')).length;
+    if (learningsEl) learningsEl.textContent = state.posts.filter(p => p.tags.includes('learnings')).length;
+    if (improvementsEl) improvementsEl.textContent = state.posts.filter(p => p.tags.includes('improvements')).length;
+    if (tasksEl) tasksEl.textContent = state.posts.filter(p => p.tags.includes('tasks')).length;
+    
+    // Archives count
+    const feb2026El = document.getElementById('feb2026-count');
+    if (feb2026El) {
+        const count = state.posts.filter(p => p.created_at.startsWith('2026-02')).length;
+        feb2026El.textContent = count;
     }
     
     // Update trophies
     updateTrophies();
+    
+    // Render activity graph
+    renderActivityGraph();
+    
+    // Render archives
+    renderArchives();
 }
 
 // Trophies System
@@ -344,7 +361,9 @@ function updateTrophies() {
         { id: 'streak7', name: '7 Day Streak', desc: '7 day streak', icon: '🔥', condition: () => state.streak >= 7 },
         { id: 'karma100', name: 'Century', desc: '100 karma', icon: '💯', condition: () => state.karma >= 100 },
         { id: 'hot', name: 'Hot Post', desc: '50+ votes', icon: '🌡️', condition: () => state.posts.some(p => p.votes >= 50) },
-        { id: 'month', name: 'Monthly Master', desc: '30 days', icon: '📆', condition: () => state.posts.length >= 30 }
+        { id: 'month', name: 'Monthly Master', desc: '30 days', icon: '📆', condition: () => state.posts.length >= 30 },
+        { id: 'projects5', name: 'Project Pro', desc: '5 projects', icon: '📊', condition: () => state.posts.filter(p => p.tags.includes('projects')).length >= 5 },
+        { id: 'learnings10', name: 'Scholar', desc: '10 learnings', icon: '🧠', condition: () => state.posts.filter(p => p.tags.includes('learnings')).length >= 10 }
     ];
     
     const container = document.getElementById('trophies-container');
@@ -365,6 +384,127 @@ function updateTrophies() {
         const unlocked = state.trophies.includes(a.id) || a.condition();
         return `<span class="trophy ${unlocked ? 'unlocked' : 'locked'}" title="${a.name}: ${a.desc}">${unlocked ? a.icon : '🔒'}</span>`;
     }).join('');
+}
+
+// Activity Graph
+function renderActivityGraph() {
+    const container = document.getElementById('activity-graph');
+    if (!container) return;
+    
+    // Aggregate posts by date
+    const postsByDate = {};
+    state.posts.forEach(post => {
+        const date = post.created_at.split('T')[0];
+        postsByDate[date] = (postsByDate[date] || 0) + 1;
+    });
+    
+    // Get last 52 weeks (GitHub style)
+    const today = new Date();
+    const squares = [];
+    
+    for (let i = 51; i >= 0; i--) {
+        const date = new Date(today);
+        date.setDate(date.getDate() - i * 7);
+        
+        for (let day = 0; day < 7; day++) {
+            const checkDate = new Date(date);
+            checkDate.setDate(checkDate.getDate() + day);
+            const dateStr = checkDate.toISOString().split('T')[0];
+            const count = postsByDate[dateStr] || 0;
+            
+            let level = 'level-0';
+            if (count >= 6) level = 'level-3';
+            else if (count >= 3) level = 'level-2';
+            else if (count >= 1) level = 'level-1';
+            
+            squares.push(`<div class="activity-square ${level}" title="${dateStr}: ${count} posts"></div>`);
+        }
+    }
+    
+    container.innerHTML = `<div class="activity-grid">${squares.join('')}</div>`;
+}
+
+// Monthly Archives
+function renderArchives() {
+    const container = document.getElementById('archives-list');
+    if (!container) return;
+    
+    const months = {};
+    state.posts.forEach(post => {
+        const month = post.created_at.substring(0, 7); // YYYY-MM
+        months[month] = (months[month] || 0) + 1;
+    });
+    
+    const monthNames = {
+        '2026-02': 'February 2026',
+        '2026-01': 'January 2026',
+        '2025-12': 'December 2025',
+        '2025-11': 'November 2025'
+    };
+    
+    const sortedMonths = Object.keys(months).sort().reverse();
+    
+    container.innerHTML = sortedMonths.map(month => `
+        <a href="#" class="archive-item" data-month="${month}" onclick="filterByMonth('${month}'); return false;">
+            <span class="archive-icon">📆</span>
+            <span>${monthNames[month] || month}</span>
+            <span class="archive-count">${months[month]}</span>
+        </a>
+    `).join('');
+}
+
+function filterByMonth(month) {
+    state.currentTimeRange = month;
+    
+    // Update UI
+    document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+    
+    // Update sort controls to show month
+    document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+    
+    renderPosts();
+    
+    showToast(`Showing posts from ${month}`);
+}
+
+// Share Functionality
+function sharePost(postId, platform) {
+    const post = state.posts.find(p => p.id === postId);
+    if (!post) return;
+    
+    const url = post.html_url;
+    const title = post.title;
+    const text = `Check out this post: ${title}`;
+    
+    if (platform === 'twitter') {
+        window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`, '_blank');
+    } else if (platform === 'linkedin') {
+        window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}`, '_blank');
+    } else if (platform === 'copy') {
+        navigator.clipboard.writeText(url).then(() => {
+            showToast('Link copied!');
+        });
+    } else if (navigator.share) {
+        navigator.share({ title, text, url });
+    }
+}
+
+// View Toggle
+function toggleView() {
+    const feed = document.getElementById('posts-feed');
+    const toggleBtn = document.getElementById('view-toggle');
+    
+    if (state.viewMode === 'card') {
+        state.viewMode = 'compact';
+        feed.classList.add('compact-view');
+        toggleBtn.textContent = '⊜';
+    } else {
+        state.viewMode = 'card';
+        feed.classList.remove('compact-view');
+        toggleBtn.textContent = '⊞';
+    }
+    
+    localStorage.setItem('viewMode', state.viewMode);
 }
 
 // Toast Notification
@@ -528,6 +668,9 @@ function setupEventListeners() {
     document.querySelector('.modal-close')?.addEventListener('click', closeModal);
     document.querySelector('.modal-backdrop')?.addEventListener('click', closeModal);
     
+    // View toggle
+    document.getElementById('view-toggle')?.addEventListener('click', toggleView);
+    
     // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
         // Escape to close modal
@@ -577,6 +720,13 @@ function setupEventListeners() {
 async function init() {
     initTheme();
     setupEventListeners();
+    
+    // Load view mode
+    state.viewMode = localStorage.getItem('viewMode') || 'card';
+    if (state.viewMode === 'compact') {
+        document.getElementById('posts-feed')?.classList.add('compact-view');
+        document.getElementById('view-toggle').textContent = '⊜';
+    }
     
     const issues = await fetchIssues();
     state.posts = issues.map(transformIssueToPost);

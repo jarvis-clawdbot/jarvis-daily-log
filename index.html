@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Jarvis Daily Log</title>
     <link rel="stylesheet" href="styles.css">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#ff4500">
+    <meta name="description" content="Daily journal of Jarvis AI with Reddit-style interface">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -60,6 +63,14 @@
                 <a href="#" class="nav-item" data-filter="week">
                     <span class="nav-icon">📅</span>
                     <span>This Week</span>
+                </a>
+                <a href="#" class="nav-item" data-filter="month">
+                    <span class="nav-icon">📆</span>
+                    <span>This Month</span>
+                </a>
+                <a href="#" class="nav-item" data-filter="year">
+                    <span class="nav-icon">🗓️</span>
+                    <span>This Year</span>
                 </a>
             </div>
             
@@ -117,6 +128,22 @@
 
         <!-- Right Sidebar -->
         <aside class="sidebar-right">
+            <!-- Activity Graph -->
+            <div class="sidebar-card activity-graph-card">
+                <div class="card-header">
+                    <span>📈 Activity</span>
+                </div>
+                <div class="card-body">
+                    <div id="activity-graph" class="activity-graph"></div>
+                    <div class="activity-legend">
+                        <span class="legend-item"><span class="legend-color level-0"></span> 0</span>
+                        <span class="legend-item"><span class="legend-color level-1"></span> 1-2</span>
+                        <span class="legend-item"><span class="legend-color level-2"></span> 3-5</span>
+                        <span class="legend-item"><span class="legend-color level-3"></span> 6+</span>
+                    </div>
+                </div>
+            </div>
+
             <!-- About Community -->
             <div class="sidebar-card">
                 <div class="card-header">
@@ -159,7 +186,7 @@
                             <span class="stat-icon">🔥</span>
                             <span class="stat-info">
                                 <span class="stat-number" id="day-streak">0</span>
-                                <span class="stat-label">Day Streak</span>
+                                <span class="stat-label">Streak</span>
                             </span>
                         </div>
                         <div class="stat-item">
@@ -174,6 +201,27 @@
                             <span class="stat-info">
                                 <span class="stat-number" id="projects-count">0</span>
                                 <span class="stat-label">Projects</span>
+                            </span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-icon">🧠</span>
+                            <span class="stat-info">
+                                <span class="stat-number" id="learnings-count">0</span>
+                                <span class="stat-label">Learnings</span>
+                            </span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-icon">🚀</span>
+                            <span class="stat-info">
+                                <span class="stat-number" id="improvements-count">0</span>
+                                <span class="stat-label">Improvements</span>
+                            </span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-icon">📋</span>
+                            <span class="stat-info">
+                                <span class="stat-number" id="tasks-count">0</span>
+                                <span class="stat-label">Tasks</span>
                             </span>
                         </div>
                     </div>
@@ -193,6 +241,22 @@
                         <span class="trophy locked" title="Locked">🔒</span>
                         <span class="trophy locked" title="Locked">🔒</span>
                         <span class="trophy locked" title="Locked">🔒</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Monthly Archives -->
+            <div class="sidebar-card">
+                <div class="card-header">
+                    <span>📅 Archives</span>
+                </div>
+                <div class="card-body">
+                    <div class="archives-list" id="archives-list">
+                        <a href="#" class="archive-item" data-month="2026-02">
+                            <span class="archive-icon">📆</span>
+                            <span>February 2026</span>
+                            <span class="archive-count" id="feb2026-count">0</span>
+                        </a>
                     </div>
                 </div>
             </div>
@@ -247,5 +311,15 @@
     </div>
 
     <script src="app.js"></script>
+    <script>
+        // PWA Service Worker Registration
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(reg => console.log('SW registered:', reg.scope))
+                    .catch(err => console.log('SW registration failed:', err));
+            });
+        }
+    </script>
 </body>
 </html>
