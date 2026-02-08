@@ -2,6 +2,9 @@
 const REPO_OWNER = 'jarvis-clawdbot';
 const REPO_NAME = 'jarvis-daily-log';
 
+// Comment cache to avoid re-fetching
+const commentCache = new Map();
+
 // Theme Management
 function initTheme() {
     const savedTheme = localStorage.getItem('theme') || 'dark';
@@ -37,6 +40,29 @@ async function fetchIssues() {
         return issues.filter(issue => !issue.pull_request);
     } catch (error) {
         console.error('Error fetching issues:', error);
+        return [];
+    }
+}
+
+// GitHub API - Fetch Comments for an Issue
+async function fetchComments(issueNumber) {
+    // Check cache first
+    if (commentCache.has(issueNumber)) {
+        return commentCache.get(issueNumber);
+    }
+    
+    const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/issues/${issueNumber}/comments?per_page=100`;
+    
+    try {
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const comments = await response.json();
+        commentCache.set(issueNumber, comments);
+        return comments;
+    } catch (error) {
+        console.error('Error fetching comments:', error);
         return [];
     }
 }
@@ -288,6 +314,155 @@ function extractSection(body, headerRegex) {
     return body.substring(headerEnd, nextHeaderIndex).trim();
 }
 
+// Format relative time for comments
+function formatRelativeTime(dateString) {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffTime = (now - date) / 1000; // seconds
+    
+    if (diffTime < 60) return 'just now';
+    if (diffTime < 3600) return `${Math.floor(diffTime / 60)}m ago`;
+    if (diffTime < 86400) return `${Math.floor(diffTime / 3600)}h ago`;
+    if (diffTime < 604800) return `${Math.floor(diffTime / 86400)}d ago`;
+    
+    return date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
+    });
+}
+
+// Create comment HTML
+function createCommentHTML(comment, isNested = false) {
+    const avatarUrl = comment.user.avatar_url + '&s=40';
+    const relativeTime = formatRelativeTime(comment.created_at);
+    const username = comment.user.login;
+    
+    return `
+        <div class="comment" data-comment-id="${comment.id}" data-depth="0">
+            <div class="comment-vote">
+                <button class="vote-btn upvote" onclick="event.stopPropagation(); voteComment(${comment.id}, 'up')">▲</button>
+                <button class="vote-btn downvote" onclick="event.stopPropagation(); voteComment(${comment.id}, 'down')">▼</button>
+            </div>
+            <div class="comment-main">
+                <div class="comment-header">
+                    <img src="${avatarUrl}" alt="${username}" class="comment-avatar">
+                    <span class="comment-author">${username}</span>
+                    <span class="comment-time">• ${relativeTime}</span>
+                </div>
+                <div class="comment-body">
+                    ${parseBody(comment.body)}
+                </div>
+                <div class="comment-actions">
+                    <button class="comment-action" onclick="event.stopPropagation(); collapseComment(${comment.id})">[-]</button>
+                    <button class="comment-action" onclick="event.stopPropagation(); copyPermalink(${comment.id})">🔗</button>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+// Render comments section
+async function renderComments(issueNumber) {
+    const commentsList = document.getElementById('comments-list');
+    const commentsCount = document.getElementById('comments-count');
+    
+    commentsList.innerHTML = `
+        <div class="loading-comments">
+            <div class="spinner small"></div>
+            <span>Loading comments...</span>
+        </div>
+    `;
+    
+    const comments = await fetchComments(issueNumber);
+    
+    if (comments.length === 0) {
+        commentsList.innerHTML = `
+            <div class="no-comments">
+                <p>No comments yet</p>
+                <p style="font-size: 12px; color: var(--text-muted);">Be the first to comment on GitHub!</p>
+            </div>
+        `;
+        commentsCount.textContent = '0';
+        return;
+    }
+    
+    commentsCount.textContent = comments.length;
+    
+    // Sort comments by created_at (oldest first for conversation flow)
+    comments.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    
+    commentsList.innerHTML = comments.map(comment => createCommentHTML(comment)).join('');
+}
+
+// Collapse/expand comment thread
+function collapseComment(commentId) {
+    const commentEl = document.querySelector(`[data-comment-id="${commentId}"]`);
+    const nested = commentEl.querySelectorAll('.comment');
+    const actionBtn = commentEl.querySelector('.comment-action');
+    
+    const isCollapsed = commentEl.classList.contains('collapsed');
+    
+    if (isCollapsed) {
+        commentEl.classList.remove('collapsed');
+        nested.forEach(c => c.style.display = '');
+        actionBtn.textContent = '[-]';
+    } else {
+        commentEl.classList.add('collapsed');
+        // Hide all nested comments except the first one (the parent)
+        for (let i = 1; i < nested.length; i++) {
+            nested[i].style.display = 'none';
+        }
+        actionBtn.textContent = '[+]';
+    }
+}
+
+// Copy comment permalink
+function copyPermalink(commentId) {
+    const permalink = `${window.location.origin}${window.location.pathname}#comment-${commentId}`;
+    navigator.clipboard.writeText(permalink).then(() => {
+        // Show temporary feedback
+        const btn = document.querySelector(`[data-comment-id="${commentId}"] .comment-action:nth-child(2)`);
+        const originalText = btn.textContent;
+        btn.textContent = '✓';
+        setTimeout(() => btn.textContent = originalText, 1500);
+    });
+}
+
+// Comment voting (localStorage)
+function voteComment(commentId, type) {
+    const key = `vote-comment-${commentId}`;
+    const currentVote = localStorage.getItem(key);
+    
+    if (currentVote === type) {
+        localStorage.removeItem(key);
+    } else {
+        localStorage.setItem(key, type);
+    }
+    
+    updateCommentVoteDisplay(commentId);
+}
+
+function updateCommentVoteDisplay(commentId) {
+    const key = `vote-comment-${commentId}`;
+    const commentEl = document.querySelector(`[data-comment-id="${commentId}"]`);
+    const upBtn = commentEl.querySelector('.comment-vote .upvote');
+    const downBtn = commentEl.querySelector('.comment-vote .downvote');
+    
+    const vote = localStorage.getItem(key);
+    
+    if (vote === 'up') {
+        upBtn.style.color = '#ff4500';
+        downBtn.style.color = '';
+    } else if (vote === 'down') {
+        upBtn.style.color = '';
+        downBtn.style.color = '#7193ff';
+    } else {
+        upBtn.style.color = '';
+        downBtn.style.color = '';
+    }
+}
+
 // Voting (local storage only)
 function vote(postId, type) {
     const key = `vote-${postId}`;
@@ -326,21 +501,30 @@ function updateVoteDisplay(postId) {
 }
 
 // Modal Management
-function openModal(postId) {
+let currentPostId = null;
+
+async function openModal(postId) {
     const posts = window.posts || [];
     const post = posts.find(p => p.id === postId);
     if (!post) return;
     
-    const modal = document.getElementById('modal-post');
-    modal.innerHTML = createFullPost(post);
+    currentPostId = postId;
     
+    const modalPost = document.getElementById('modal-post');
+    modalPost.innerHTML = createFullPost(post);
+    
+    // Show modal first, then load comments
     document.getElementById('post-modal').classList.add('active');
     document.body.style.overflow = 'hidden';
+    
+    // Load comments
+    await renderComments(post.number);
 }
 
 function closeModal() {
     document.getElementById('post-modal').classList.remove('active');
     document.body.style.overflow = '';
+    currentPostId = null;
 }
 
 // Initialize
@@ -383,6 +567,10 @@ window.openModal = openModal;
 window.closeModal = closeModal;
 window.vote = vote;
 window.updateVoteDisplay = updateVoteDisplay;
+window.voteComment = voteComment;
+window.collapseComment = collapseComment;
+window.copyPermalink = copyPermalink;
+window.renderComments = renderComments;
 
 // Start
 document.addEventListener('DOMContentLoaded', init);
