@@ -32,12 +32,19 @@ function toggleTheme() {
 // GitHub API
 async function fetchIssues() {
     try {
-        const res = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/issues?state=all&per_page=100`);
-        if (!res.ok) throw new Error();
+        console.log('Fetching issues from GitHub API...');
+        const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/issues?state=all&per_page=100`;
+        console.log('API URL:', url);
+        const res = await fetch(url);
+        console.log('Response status:', res.status);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
         const data = await res.json();
-        return data.filter(i => !i.pull_request);
+        console.log('Fetched issues:', data.length);
+        const filtered = data.filter(i => !i.pull_request);
+        console.log('Filtered issues (no PRs):', filtered.length);
+        return filtered;
     } catch (e) {
-        console.error(e);
+        console.error('Error fetching issues:', e);
         return [];
     }
 }
@@ -579,13 +586,30 @@ function setupEventListeners() {
 
 // Initialize
 async function init() {
+    console.log('Initializing app...');
     initTheme();
     setupEventListeners();
+    
+    console.log('Fetching issues...');
     const issues = await fetchIssues();
+    console.log('Issues fetched:', issues.length);
+    
+    if (issues.length === 0) {
+        console.log('No issues found, showing empty state');
+        const feed = document.getElementById('posts-feed');
+        if (feed) {
+            feed.innerHTML = '<div class="loading"><h2>No posts found</h2><p>Check back later for updates!</p></div>';
+        }
+        updateStats();
+        return;
+    }
+    
     state.posts = issues.map(transformIssueToPost);
+    console.log('Posts transformed:', state.posts.length);
     renderPosts();
     updateStats();
     checkStreak();
+    console.log('App initialized successfully');
 }
 
 function checkStreak() {
