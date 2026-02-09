@@ -1851,3 +1851,266 @@ a:hover {
     width: 20px;
     height: 20px;
 }
+
+/* Classic View Mode */
+.posts-feed.classic-view .post-card {
+    display: flex;
+    flex-direction: row;
+    padding: 0;
+}
+
+.classic-view .post-card .vote-section {
+    width: 40px;
+    flex-shrink: 0;
+}
+
+.classic-view .post-card .post-content {
+    padding: 8px 12px;
+}
+
+.classic-view .post-card .post-excerpt {
+    display: none;
+}
+
+.classic-view .post-card .post-footer {
+    margin-top: 4px;
+}
+
+/* Mobile Responsiveness */
+@media (max-width: 1200px) {
+    .sidebar-right {
+        width: 280px;
+    }
+}
+
+@media (max-width: 960px) {
+    .sidebar-right {
+        display: none;
+    }
+    
+    .main-layout {
+        padding: 12px;
+        gap: 16px;
+    }
+    
+    .sidebar-left {
+        display: none;
+    }
+    
+    .header-center {
+        flex: 1;
+    }
+    
+    .search-bar {
+        max-width: none;
+    }
+}
+
+@media (max-width: 640px) {
+    .reddit-header {
+        padding: 0 12px;
+        gap: 8px;
+    }
+    
+    .header-left {
+        flex-shrink: 0;
+    }
+    
+    .reddit-name {
+        display: none;
+    }
+    
+    .header-center {
+        flex: 1;
+    }
+    
+    .header-btn svg {
+        width: 20px;
+        height: 20px;
+    }
+    
+    .main-layout {
+        padding: 8px;
+    }
+    
+    .create-post-area {
+        padding: 8px;
+    }
+    
+    .create-post-avatar {
+        width: 32px;
+        height: 32px;
+        font-size: 16px;
+    }
+    
+    .create-post-input {
+        font-size: 13px;
+    }
+    
+    .sort-bar {
+        gap: 4px;
+        overflow-x: auto;
+        padding-bottom: 8px;
+    }
+    
+    .sort-btn {
+        padding: 6px 10px;
+        font-size: 12px;
+        white-space: nowrap;
+    }
+    
+    .sort-btn svg {
+        display: none;
+    }
+    
+    .sort-divider {
+        display: none;
+    }
+    
+    .view-btn {
+        flex-shrink: 0;
+    }
+    
+    .post-card {
+        padding: 8px;
+    }
+    
+    .post-card .vote-section {
+        width: 32px;
+        padding: 4px 2px;
+    }
+    
+    .post-card .post-content {
+        padding: 6px 8px;
+    }
+    
+    .post-title {
+        font-size: 15px;
+    }
+    
+    .post-excerpt {
+        font-size: 13px;
+        -webkit-line-clamp: 2;
+    }
+    
+    .post-footer {
+        gap: 4px;
+    }
+    
+    .footer-btn {
+        padding: 4px 6px;
+        font-size: 11px;
+    }
+}
+
+@media (max-width: 480px) {
+    .header-btn {
+        padding: 8px;
+    }
+    
+    .header-btn svg {
+        width: 18px;
+        height: 18px;
+    }
+    
+    .notification-badge {
+        top: 4px;
+        right: 4px;
+        font-size: 10px;
+        min-width: 16px;
+        height: 16px;
+    }
+    
+    .create-post-input {
+        padding: 8px 12px;
+    }
+    
+    .create-post-btn-icon {
+        display: none;
+    }
+    
+    .sort-btn {
+        padding: 6px 8px;
+    }
+    
+    .post-title {
+        font-size: 14px;
+    }
+}
+
+/* Hide elements on mobile */
+@media (max-width: 640px) {
+    .sidebar-right .activity-card,
+    .sidebar-right .trophies-card {
+        display: none;
+    }
+    
+    .sidebar-right .streak-card {
+        display: block;
+    }
+}
+
+/* Smooth animations */
+.post-card,
+.action-btn,
+.footer-btn,
+.side-nav-item,
+.sort-btn,
+.view-btn {
+    transition: all 0.15s ease;
+}
+
+/* Hover effects */
+.post-card:hover {
+    border-color: var(--text-muted);
+}
+
+.action-btn:hover {
+    background: var(--bg-hover);
+}
+
+.side-nav-item:hover {
+    background: var(--bg-hover);
+}
+
+.sort-btn:hover {
+    background: var(--bg-hover);
+}
+
+.view-btn:hover {
+    background: var(--bg-hover);
+}
+
+/* Focus states */
+.post-card:focus,
+.side-nav-item:focus,
+.sort-btn:focus,
+.view-btn:focus,
+.action-btn:focus {
+    outline: 2px solid var(--accent-color);
+    outline-offset: -2px;
+}
+
+/* Toast styling for mobile */
+@media (max-width: 640px) {
+    .toast {
+        left: 16px;
+        right: 16px;
+        bottom: 16px;
+        text-align: center;
+    }
+}
+
+/* Card view mode specific */
+.posts-feed:not(.classic-view) .post-card {
+    display: flex;
+    flex-direction: row;
+}
+
+.posts-feed:not(.classic-view) .post-card .post-excerpt {
+    display: -webkit-box;
+}
+
+.posts-feed:not(.classic-view) .post-card .post-footer {
+    margin-top: 8px;
+}

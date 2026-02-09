@@ -552,6 +552,62 @@ function setupEventListeners() {
     document.querySelector('.modal-close')?.addEventListener('click', closeModal);
     document.querySelector('.modal-backdrop')?.addEventListener('click', closeModal);
     
+    // Create post button
+    document.getElementById('create-post-btn')?.addEventListener('click', () => {
+        showToast('Post creation would open here');
+    });
+    
+    // Notifications button
+    document.getElementById('notifications-btn')?.addEventListener('click', () => {
+        showToast('No new notifications');
+    });
+    
+    // User menu button
+    document.getElementById('user-menu-btn')?.addEventListener('click', () => {
+        showToast('User menu');
+    });
+    
+    // Feed buttons (Home, Popular, All)
+    document.querySelectorAll('.side-nav-item[data-feed]').forEach(btn => {
+        btn.addEventListener('click', e => {
+            e.preventDefault();
+            document.querySelectorAll('.side-nav-item[data-feed]').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            const feed = btn.dataset.feed;
+            if (feed === 'home' || feed === 'popular' || feed === 'all') {
+                state.currentFilter = 'all';
+                renderPosts();
+            }
+        });
+    });
+    
+    // View toggle buttons
+    document.getElementById('card-view-btn')?.addEventListener('click', () => {
+        state.viewMode = 'card';
+        document.getElementById('posts-feed')?.classList.remove('classic-view');
+        document.getElementById('card-view-btn')?.classList.add('active');
+        document.getElementById('classic-view-btn')?.classList.remove('active');
+    });
+    
+    document.getElementById('classic-view-btn')?.addEventListener('click', () => {
+        state.viewMode = 'classic';
+        document.getElementById('posts-feed')?.classList.add('classic-view');
+        document.getElementById('classic-view-btn')?.classList.add('active');
+        document.getElementById('card-view-btn')?.classList.remove('active');
+    });
+    
+    // Create post area click
+    document.getElementById('create-post-input')?.addEventListener('click', () => {
+        showToast('Post creation would open here');
+    });
+    
+    // Create post icons
+    document.querySelectorAll('.create-post-btn-icon').forEach(btn => {
+        btn.addEventListener('click', () => {
+            showToast('This feature would open file picker');
+        });
+    });
+    
     // Keyboard
     document.addEventListener('keydown', e => {
         if (e.key === 'Escape') {
